@@ -1,0 +1,36 @@
+# Python virtual environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Jupyter and Colab
+.ipynb_checkpoints/
+*.ipynb
+
+# Hugging Face cache
+.cache/
+
+# Model checkpoints and logs
+experiments/checkpoints/*.pth
+*.log
+
+# Data (if you save locally)
+data/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Weights & Biases
+wandb/
+
+# Colab outputs
+sample_data/
