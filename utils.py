@@ -54,8 +54,18 @@ def save_checkpoint(
     is_best: bool = False
 ):
     """Save model checkpoint"""
+    import glob
     os.makedirs(save_dir, exist_ok=True)
-    
+
+    # Delete previous checkpoints
+    for ckpt in glob.glob(os.path.join(save_dir, f'{model_name}_latest.pth')):
+        os.remove(ckpt)
+    for ckpt in glob.glob(os.path.join(save_dir, f'{model_name}_iter_*.pth')):
+        os.remove(ckpt)
+    if is_best:
+        for ckpt in glob.glob(os.path.join(save_dir, f'{model_name}_best.pth')):
+            os.remove(ckpt)
+
     checkpoint = {
         'epoch': epoch,
         'iteration': iteration,
@@ -65,21 +75,21 @@ def save_checkpoint(
         'best_val_acc': best_val_acc,
         'model_name': model_name
     }
-    
+
     # Save latest
     latest_path = os.path.join(save_dir, f'{model_name}_latest.pth')
     torch.save(checkpoint, latest_path)
-    
+
     # Save iteration checkpoint
     iter_path = os.path.join(save_dir, f'{model_name}_iter_{iteration}.pth')
     torch.save(checkpoint, iter_path)
-    
+
     # Save best
     if is_best:
         best_path = os.path.join(save_dir, f'{model_name}_best.pth')
         torch.save(checkpoint, best_path)
         print(f"✓ Best model saved with val_acc: {best_val_acc:.4f}")
-    
+
     print(f"✓ Checkpoint saved at iteration {iteration}")
 
 

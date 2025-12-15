@@ -6,7 +6,12 @@
 metrics.py - Comprehensive evaluation metrics
 (Reuses code from CV project - works for both image and text classification)
 """
-
+import os
+import numpy as np
+import torch
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report, roc_auc_score,

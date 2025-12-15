@@ -42,6 +42,7 @@ def train_epoch(
     
     pbar = tqdm(train_loader, desc=f'Epoch {epoch}')
     
+    val_loader = train_loader.dataset.dataset.val_loader if hasattr(train_loader.dataset.dataset, 'val_loader') else None
     for batch_idx, (input_ids, attention_masks, labels, metadata) in enumerate(pbar):
         input_ids = input_ids.to(device)
         attention_masks = attention_masks.to(device)
@@ -82,11 +83,36 @@ def train_epoch(
                 'train/learning_rate': optimizer.param_groups[0]['lr']
             }
             log_to_wandb(metrics, global_iter)
+            # Log validation loss at the same interval
+            if val_loader is not None:
+                model.eval()
+                val_running_loss = 0.0
+                val_correct = 0
+                val_total = 0
+                with torch.no_grad():
+                    for val_input_ids, val_attention_masks, val_labels, _ in val_loader:
+                        val_input_ids = val_input_ids.to(device)
+                        val_attention_masks = val_attention_masks.to(device)
+                        val_labels = val_labels.to(device)
+                        val_logits, _ = model(val_input_ids, val_attention_masks)
+                        val_loss = criterion(val_logits, val_labels)
+                        _, val_predicted = torch.max(val_logits, 1)
+                        val_total += val_labels.size(0)
+                        val_correct += (val_predicted == val_labels).sum().item()
+                        val_running_loss += val_loss.item()
+                val_loss_avg = val_running_loss / len(val_loader)
+                val_acc_avg = 100. * val_correct / val_total
+                val_metrics = {
+                    'val/loss': val_loss_avg,
+                    'val/accuracy': val_acc_avg
+                }
+                log_to_wandb(val_metrics, global_iter)
+                model.train()
         
         # Log sample predictions
         if global_iter % config.get('viz_interval', 100) == 0:
             sample_texts = [m['text'][:100] + '...' for m in metadata[:5]]
-            sample_preds = [f"True: {metadata[i]['label_name']}, Pred: {train_loader.dataset.label_names[predicted[i].item()]}" 
+            sample_preds = [f"True: {metadata[i]['label_name']}, Pred: {train_loader.dataset.dataset.label_names[predicted[i].item()]}" 
                           for i in range(min(5, len(metadata)))]
             
             wandb_table = {
