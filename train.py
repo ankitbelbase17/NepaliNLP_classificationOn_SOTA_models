@@ -26,6 +26,7 @@ from metrics import calculate_metrics, plot_confusion_matrix
 def train_epoch(
     model: nn.Module,
     train_loader,
+    val_loader,
     criterion,
     optimizer,
     scaler,
@@ -33,7 +34,8 @@ def train_epoch(
     epoch: int,
     global_iter: int,
     config: dict,
-    exp_dir: str
+    exp_dir: str,
+    label_names: list
 ) -> tuple:
     """Train for one epoch"""
     model.train()
@@ -75,9 +77,15 @@ def train_epoch(
         
         global_iter += 1
         
+        
+        val_loss,val_acc,_=validate(
+            model, val_loader, criterion, device, label_names)
+        
         # Log to WandB every iteration
         if global_iter % config.get('log_interval', 10) == 0:
             metrics = {
+                'val/loss':val_loss,
+                'val/accuracy':val_acc,
                 'train/loss': loss.item(),
                 'train/accuracy': 100. * correct / total,
                 'train/learning_rate': optimizer.param_groups[0]['lr']
@@ -248,8 +256,8 @@ def main(args):
     for epoch in range(start_epoch, args.epochs):
         # Train
         train_loss, train_acc, global_iter = train_epoch(
-            model, train_loader, criterion, optimizer, scaler,
-            device, epoch, global_iter, config, exp_dir
+            model, train_loader,val_loader, criterion, optimizer, scaler,
+            device, epoch, global_iter, config, exp_dir,label_names
         )
         
         # Validate
