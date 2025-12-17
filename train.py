@@ -1,4 +1,3 @@
-train.py before the gpt changes:
 """
 train.py - Training script for Nepali text classification
 Supports: BERT, BART, ELECTRA, Reformer, mBART, Canine, NepBERT, T5, Qwen2
@@ -21,6 +20,39 @@ from utils import (
     count_parameters, set_seed, get_device, create_experiment_dir
 )
 from metrics import calculate_metrics, plot_confusion_matrix
+
+
+def validate_batch(
+    model: nn.Module,
+    val_loader,
+    criterion,
+    device
+) -> tuple:
+    """Validate on a single batch"""
+    model.eval()
+    
+    # Get one batch
+    val_iter = iter(val_loader)
+    try:
+        input_ids, attention_masks, labels, metadata = next(val_iter)
+    except StopIteration:
+        return 0.0, 0.0
+    
+    input_ids = input_ids.to(device)
+    attention_masks = attention_masks.to(device)
+    labels = labels.to(device)
+    
+    with torch.no_grad():
+        logits, aux_outputs = model(input_ids, attention_masks)
+        loss = criterion(logits, labels)
+        
+        _, predicted = torch.max(logits, 1)
+        correct = (predicted == labels).sum().item()
+        total = labels.size(0)
+        acc = 100. * correct / total
+    
+    model.train()
+    return loss.item(), acc
 
 
 def train_epoch(
@@ -77,15 +109,15 @@ def train_epoch(
         
         global_iter += 1
         
-        
-        val_loss,val_acc,_=validate(
-            model, val_loader, criterion, device, label_names)
+        # Validate on a single batch
+        val_loss, val_acc = validate_batch(
+            model, val_loader, criterion, device)
         
         # Log to WandB every iteration
         if global_iter % config.get('log_interval', 10) == 0:
             metrics = {
-                'val/loss':val_loss,
-                'val/accuracy':val_acc,
+                'val/loss': val_loss,
+                'val/accuracy': val_acc,
                 'train/loss': loss.item(),
                 'train/accuracy': 100. * correct / total,
                 'train/learning_rate': optimizer.param_groups[0]['lr']
@@ -256,8 +288,8 @@ def main(args):
     for epoch in range(start_epoch, args.epochs):
         # Train
         train_loss, train_acc, global_iter = train_epoch(
-            model, train_loader,val_loader, criterion, optimizer, scaler,
-            device, epoch, global_iter, config, exp_dir,label_names
+            model, train_loader, val_loader, criterion, optimizer, scaler,
+            device, epoch, global_iter, config, exp_dir, label_names
         )
         
         # Validate

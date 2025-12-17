@@ -19,6 +19,7 @@ from sklearn.metrics import (
     average_precision_score, matthews_corrcoef, cohen_kappa_score
 )
 from sklearn.preprocessing import label_binarize
+import json
 
 
 def calculate_metrics(
