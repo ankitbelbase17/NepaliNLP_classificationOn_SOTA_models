@@ -16,6 +16,53 @@ from utils import load_checkpoint, get_device
 from transformers import AutoTokenizer
 
 
+def get_word_tokens(text: str) -> List[str]:
+    """
+    Split text into word tokens (Nepali words separated by spaces)
+    
+    Args:
+        text: Input text
+        
+    Returns:
+        List of word tokens
+    """
+    # Split by whitespace and filter empty strings
+    words = [w.strip() for w in text.split() if w.strip()]
+    return words
+
+
+def get_attention_display_tokens(
+    tokenizer_tokens: List[str],
+    original_text: str,
+    attention_mask
+) -> List[str]:
+    """
+    Get display tokens from original text for visualization
+    
+    Args:
+        tokenizer_tokens: Tokens from tokenizer
+        original_text: Original input text
+        attention_mask: Attention mask to determine actual length
+        
+    Returns:
+        List of display tokens (words from original text)
+    """
+    # Get actual sequence length (excluding padding)
+    actual_length = attention_mask.sum().item() if hasattr(attention_mask, 'sum') else len(tokenizer_tokens)
+    
+    # Get word tokens from original text
+    word_tokens = get_word_tokens(original_text)
+    
+    # If we have word tokens, use them
+    if word_tokens:
+        # Truncate word tokens to match attention weights length
+        return word_tokens[:min(len(word_tokens), int(actual_length))]
+    else:
+        # Fallback to tokenizer tokens
+        return tokenizer_tokens[:int(actual_length)]
+
+
+
 def visualize_attention_heatmap(
     attention_weights: torch.Tensor,
     tokens: List[str],
@@ -356,10 +403,19 @@ def main(args):
     if aux_outputs.get('attentions') is not None:
         print("\nGenerating attention visualizations...")
         
+        # Get display tokens (original text words instead of subword tokens)
+        # For text mode, use the provided text
+        if args.text:
+            display_text = args.text
+        else:
+            display_text = text
+        
+        display_tokens = get_attention_display_tokens(tokens, display_text, attention_mask)
+        
         # Single head heatmap
         visualize_attention_heatmap(
             aux_outputs['attentions'],
-            tokens,
+            display_tokens,
             os.path.join(args.output_dir, 'attention_heatmap.png'),
             layer_idx=args.layer_idx,
             head_idx=args.head_idx
@@ -368,7 +424,7 @@ def main(args):
         # All heads
         visualize_all_heads(
             aux_outputs['attentions'],
-            tokens,
+            display_tokens,
             os.path.join(args.output_dir, 'attention_all_heads.png'),
             layer_idx=args.layer_idx
         )
@@ -376,7 +432,7 @@ def main(args):
         # Token attention scores
         visualize_token_attention_scores(
             aux_outputs['attentions'],
-            tokens,
+            display_tokens,
             os.path.join(args.output_dir, 'token_attention_scores.png'),
             layer_idx=args.layer_idx,
             query_token_idx=0
@@ -385,7 +441,7 @@ def main(args):
         # Attention flow
         visualize_attention_flow(
             aux_outputs['attentions'],
-            tokens,
+            display_tokens,
             os.path.join(args.output_dir, 'attention_flow.png')
         )
         
