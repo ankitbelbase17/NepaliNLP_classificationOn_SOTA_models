@@ -236,6 +236,12 @@ def main(args):
     # Get device
     device = get_device()
     
+    print("\n" + "="*70)
+    print("Attention and Activation Visualization")
+    print("="*70)
+    print(f"Model: {args.model_name}")
+    print(f"Output directory: {args.output_dir}")
+    
     # Load tokenizer
     tokenizer_map = {
         'bert': 'bert-base-multilingual-cased',
@@ -248,35 +254,81 @@ def main(args):
     tokenizer_name = tokenizer_map.get(args.model_name, 'bert-base-multilingual-cased')
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
     
-    # Tokenize text
-    encoding = tokenizer(
-        args.text,
-        max_length=args.max_length,
-        padding='max_length',
-        truncation=True,
-        return_tensors='pt'
-    )
+    # Load dataset and dataloader
+    from dataloader import NepaliTextDataset, get_dataloaders
     
-    input_ids = encoding['input_ids'].to(device)
-    attention_mask = encoding['attention_mask'].to(device)
-    
-    # Get tokens for visualization
-    tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-    # Remove padding tokens
-    actual_length = attention_mask[0].sum().item()
-    tokens = tokens[:actual_length]
+    if args.text:
+        # Mode 1: Use provided text
+        print(f"\nMode: Using provided text")
+        print("="*70 + "\n")
+        
+        # Tokenize text
+        encoding = tokenizer(
+            args.text,
+            max_length=args.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+        
+        input_ids = encoding['input_ids'].to(device)
+        attention_mask = encoding['attention_mask'].to(device)
+        
+        # Get tokens for visualization
+        tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+        # Remove padding tokens
+        actual_length = attention_mask[0].sum().item()
+        tokens = tokens[:actual_length]
+        
+        # Get label names
+        temp_dataset = NepaliTextDataset(split='train', model_name=args.model_name)
+        num_classes = temp_dataset.num_classes
+        label_names = temp_dataset.label_names
+        
+    else:
+        # Mode 2: Use first batch from dataloader
+        print(f"Mode: Using first batch from dataloader")
+        print("="*70 + "\n")
+        
+        print("Loading dataloader...")
+        train_loader, _, _, label_names = get_dataloaders(
+            model_name=args.model_name,
+            batch_size=1,
+            max_length=args.max_length,
+            num_workers=0
+        )
+        
+        num_classes = len(label_names)
+        
+        # Get first batch
+        batch_iter = iter(train_loader)
+        input_ids, attention_mask, labels, metadata = next(batch_iter)
+        
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+        
+        # Get tokens for visualization
+        tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+        # Remove padding tokens
+        actual_length = attention_mask[0].sum().item()
+        tokens = tokens[:actual_length]
+        
+        print(f"Text: {metadata['text'][0]}")
+        print(f"True label: {label_names[labels[0].item()]}")
+        print(f"Sequence length: {actual_length}")
+        print()
     
     # Create model
-    from dataloader import NepaliTextDataset
-    temp_dataset = NepaliTextDataset(split='train', model_name=args.model_name)
-    num_classes = temp_dataset.num_classes
-    
     model = get_model(args.model_name, num_classes=num_classes)
     model = model.to(device)
     
     # Load checkpoint if provided
     if args.checkpoint:
+        if not os.path.exists(args.checkpoint):
+            raise ValueError(f"Checkpoint not found: {args.checkpoint}")
+        print(f"Loading checkpoint: {args.checkpoint}")
         load_checkpoint(args.checkpoint, model, device=device)
+        print("✓ Model loaded successfully\n")
     
     model.eval()
     
@@ -288,7 +340,7 @@ def main(args):
         pred_class = probs.argmax(dim=1).item()
         pred_prob = probs[0, pred_class].item()
     
-    print(f"\nPredicted class: {temp_dataset.label_names[pred_class]}")
+    print(f"Predicted class: {label_names[pred_class]}")
     print(f"Confidence: {pred_prob:.4f}")
     
     # Create output directory
@@ -334,28 +386,58 @@ def main(args):
         print(f"\n✓ All visualizations saved to: {args.output_dir}")
     else:
         print("\n⚠ No attention weights available for this model")
+    
+    print("="*70)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Visualize attention weights for Nepali text'
+        description='Visualize attention weights for Nepali text classification'
     )
-    parser.add_argument('--model_name', type=str, required=True,
-                        choices=['bert', 'bart', 'electra', 'reformer', 'mbart',
-                               'canine', 'nepbert', 't5', 'qwen2'],
-                        help='Model architecture')
-    parser.add_argument('--text', type=str, required=True,
-                        help='Nepali text to analyze')
-    parser.add_argument('--checkpoint', type=str, default=None,
-                        help='Path to checkpoint (optional)')
-    parser.add_argument('--output_dir', type=str, default='attention_visualizations',
-                        help='Output directory')
-    parser.add_argument('--layer_idx', type=int, default=-1,
-                        help='Layer index (-1 for last)')
-    parser.add_argument('--head_idx', type=int, default=0,
-                        help='Attention head index')
-    parser.add_argument('--max_length', type=int, default=512,
-                        help='Maximum sequence length')
+    parser.add_argument(
+        '--model_name',
+        type=str,
+        required=True,
+        choices=['bert', 'bart', 'electra', 'reformer', 'mbart',
+                'canine', 'nepbert', 't5', 'qwen2'],
+        help='Model architecture'
+    )
+    parser.add_argument(
+        '--text',
+        type=str,
+        default=None,
+        help='Nepali text to analyze (optional, uses first batch from dataloader if not provided)'
+    )
+    parser.add_argument(
+        '--checkpoint',
+        type=str,
+        default=None,
+        help='Path to checkpoint (optional)'
+    )
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        default='attention_visualizations',
+        help='Output directory'
+    )
+    parser.add_argument(
+        '--layer_idx',
+        type=int,
+        default=-1,
+        help='Layer index (-1 for last)'
+    )
+    parser.add_argument(
+        '--head_idx',
+        type=int,
+        default=0,
+        help='Attention head index'
+    )
+    parser.add_argument(
+        '--max_length',
+        type=int,
+        default=512,
+        help='Maximum sequence length'
+    )
     
     args = parser.parse_args()
     main(args)
