@@ -252,103 +252,46 @@ def generate_metrics_summary(
     return df_overall, df_per_class
 
 
-def load_predictions_from_file(file_path: str):
-    """Load predictions from text file"""
-    predictions = []
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    try:
-                        pred = int(line)
-                        predictions.append(pred)
-                    except ValueError:
-                        print(f"Warning: Skipping non-integer line: {line}")
-        return predictions
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Predictions file not found: {file_path}")
-    except Exception as e:
-        raise Exception(f"Error reading predictions file: {e}")
-
-
 def compute_metrics_on_test_set(
     model: torch.nn.Module,
     test_loader,
     device: str,
     label_names: list,
-    output_dir: str = None,
-    predictions_file: str = None,
-    use_test_set: bool = False
+    output_dir: str = None
 ):
     """
-    Compute metrics on test set using model predictions or provided predictions file.
+    Compute metrics on test set using model inference.
     
     Args:
-        model: The model to use for inference (if predictions_file is None)
-        test_loader: DataLoader for test set (used only if use_test_set is True)
+        model: The model to use for inference (can be None if using pretrained without checkpoint)
+        test_loader: DataLoader for test set (required)
         device: Device to use for inference
         label_names: List of class names
         output_dir: Directory to save results
-        predictions_file: Path to file containing pre-computed predictions (optional)
-        use_test_set: Whether to use test set from dataloader (True if data_dir provided)
     """
     all_labels = []
     all_logits = []
     all_predictions = []
     
-    # Collect all test labels only if use_test_set is True
-    if use_test_set:
-        print("Loading test set from dataloader...")
-        with torch.no_grad():
-            for input_ids, attention_masks, labels, metadata in tqdm(test_loader):
-                all_labels.extend(labels.numpy())
-        all_labels = np.array(all_labels)
-    else:
-        all_labels = np.array(all_labels)
+    # Load test set and run inference
+    print("Loading test set and running inference...")
+    model.eval()
     
-    # Get predictions
-    if predictions_file:
-        print(f"\nLoading predictions from: {predictions_file}")
-        all_predictions = np.array(load_predictions_from_file(predictions_file))
-        
-        if use_test_set:
-            # If using test set, predictions must match test set size
-            if len(all_predictions) != len(all_labels):
-                raise ValueError(
-                    f"Number of predictions ({len(all_predictions)}) does not match "
-                    f"number of test samples ({len(all_labels)})"
-                )
-        else:
-            # If not using test set, we need to create labels for each prediction
-            all_labels = np.arange(len(all_predictions))
-        
-        # For metrics computation without logits, we'll use dummy logits
-        # This is acceptable when only predictions are available
-        all_logits = torch.zeros(len(all_predictions), len(label_names))
-        for i, pred in enumerate(all_predictions):
-            all_logits[i, pred] = 1.0
-    else:
-        # Use model for inference
-        print("\nRunning model inference on test set...")
-        model.eval()
-        
-        if test_loader is None:
-            raise ValueError("test_loader is required when predictions_file is not provided")
-        
-        with torch.no_grad():
-            for input_ids, attention_masks, labels, metadata in tqdm(test_loader):
-                input_ids = input_ids.to(device)
-                attention_masks = attention_masks.to(device)
-                
-                logits, aux_outputs = model(input_ids, attention_masks)
-                _, predicted = torch.max(logits, 1)
-                
-                all_predictions.extend(predicted.cpu().numpy())
-                all_logits.append(logits.cpu())
-        
-        all_predictions = np.array(all_predictions)
-        all_logits = torch.cat(all_logits, dim=0)
+    with torch.no_grad():
+        for input_ids, attention_masks, labels, metadata in tqdm(test_loader):
+            input_ids = input_ids.to(device)
+            attention_masks = attention_masks.to(device)
+            
+            logits, aux_outputs = model(input_ids, attention_masks)
+            _, predicted = torch.max(logits, 1)
+            
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.numpy())
+            all_logits.append(logits.cpu())
+    
+    all_predictions = np.array(all_predictions)
+    all_labels = np.array(all_labels)
+    all_logits = torch.cat(all_logits, dim=0)
     
     # Calculate metrics
     print("\nCalculating metrics...")
@@ -397,7 +340,7 @@ def main(args):
     """Main function for metrics computation"""
     from utils import load_checkpoint, get_device
     from model import get_model
-    from dataloader import get_dataloaders
+    from dataloader import get_dataloaders, NepaliTextDataset
     
     device = get_device()
     
@@ -407,63 +350,32 @@ def main(args):
     print(f"Model: {args.model_name}")
     print(f"Batch size: {args.batch_size}")
     print(f"Output directory: {args.output_dir}")
-    if args.checkpoint:
-        print(f"Mode: INFERENCE WITH CHECKPOINT")
-        print(f"Checkpoint: {args.checkpoint}")
-    if args.predictions_file:
-        print(f"Mode: USING PRE-COMPUTED PREDICTIONS")
-        print(f"Predictions file: {args.predictions_file}")
-    if args.data_dir:
-        print(f"Using test set from dataloader (data_dir: {args.data_dir})")
     print("="*70 + "\n")
     
-    # Load test set only if data_dir is provided
-    test_loader = None
-    label_names = None
-    use_test_set = False
+    # Load dataloaders (data_dir is required)
+    print("Loading dataloaders...")
+    _, _, test_loader, label_names = get_dataloaders(
+        model_name=args.model_name,
+        batch_size=args.batch_size,
+        max_length=args.max_length,
+        num_workers=args.num_workers
+    )
     
-    if args.data_dir:
-        print("Loading dataloaders...")
-        _, _, test_loader, label_names = get_dataloaders(
-            model_name=args.model_name,
-            batch_size=args.batch_size,
-            max_length=args.max_length,
-            num_workers=args.num_workers
-        )
-        use_test_set = True
-    else:
-        # Load label names from predictions file or model
-        if args.predictions_file:
-            print("Note: Using predictions file without test set data")
-            # Need to load label names from somewhere
-            # Try to load from a temporary dataset instance
-            from dataloader import NepaliTextDataset
-            temp_dataset = NepaliTextDataset(split='train', model_name=args.model_name)
-            label_names = temp_dataset.label_names
-        else:
-            # Load from dataset to get labels
-            from dataloader import NepaliTextDataset
-            temp_dataset = NepaliTextDataset(split='train', model_name=args.model_name)
-            label_names = temp_dataset.label_names
+    # Load model
+    print(f"\nLoading {args.model_name} model...")
+    model = get_model(args.model_name, num_classes=len(label_names))
+    model = model.to(device)
     
-    # Load model if checkpoint is provided
-    model = None
+    # Load checkpoint if provided
     if args.checkpoint:
         if not os.path.exists(args.checkpoint):
             raise ValueError(f"Checkpoint not found: {args.checkpoint}")
-        
-        print(f"\nLoading {args.model_name} model...")
-        model = get_model(args.model_name, num_classes=len(label_names))
-        model = model.to(device)
-        
+        print(f"Loading checkpoint: {args.checkpoint}")
         load_checkpoint(args.checkpoint, model, device=device)
-        print("✓ Model loaded successfully")
-    elif not args.predictions_file:
-        raise ValueError(
-            "Either --checkpoint or --predictions_file must be provided. "
-            "Use --checkpoint to run inference with a trained model, "
-            "or --predictions_file to use pre-computed predictions."
-        )
+    else:
+        print("✓ Using untrained model (pretrained weights only)")
+    
+    print("✓ Model loaded successfully")
     
     # Compute metrics
     metrics = compute_metrics_on_test_set(
@@ -471,9 +383,7 @@ def main(args):
         test_loader=test_loader,
         device=device,
         label_names=label_names,
-        output_dir=args.output_dir,
-        predictions_file=args.predictions_file,
-        use_test_set=use_test_set
+        output_dir=args.output_dir
     )
     
     return metrics
@@ -495,19 +405,7 @@ if __name__ == "__main__":
         '--checkpoint',
         type=str,
         default=None,
-        help='Path to model checkpoint (optional if predictions_file is provided)'
-    )
-    parser.add_argument(
-        '--predictions_file',
-        type=str,
-        default=None,
-        help='Path to text file containing predictions (one prediction per line, optional if checkpoint is provided)'
-    )
-    parser.add_argument(
-        '--data_dir',
-        type=str,
-        default=None,
-        help='Path to data directory (if provided, test set from dataloader will be used)'
+        help='Path to model checkpoint (optional, uses pretrained weights if not provided)'
     )
     parser.add_argument(
         '--batch_size',
