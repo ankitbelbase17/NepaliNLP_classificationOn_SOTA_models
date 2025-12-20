@@ -197,6 +197,7 @@ def visualize_attention_flow(
     tokens = tokens[:max_len]
     
     fig, axes = plt.subplots(1, num_layers, figsize=(num_layers * 5, 6))
+    axes = [axes] if num_layers == 1 else axes
     
     for idx, layer_idx in enumerate(layer_indices):
         # Average over heads
@@ -207,14 +208,14 @@ def visualize_attention_flow(
         im = ax.imshow(attn_avg, cmap='YlOrRd', aspect='auto')
         ax.set_title(f'Layer {layer_idx}', fontsize=11, fontweight='bold')
         
-        if idx == 0:
-            ax.set_yticks(range(len(tokens)))
-            ax.set_yticklabels(tokens, fontsize=7)
-            ax.set_ylabel('Query Tokens', fontsize=10)
-        else:
-            ax.set_yticks([])
+        # Set y-axis ticks and labels
+        ax.set_yticks(range(len(tokens)))
+        ax.set_yticklabels(tokens, fontsize=7)
+        ax.set_ylabel('Query Tokens', fontsize=10)
         
-        ax.set_xticks([])
+        # Set x-axis ticks and labels
+        ax.set_xticks(range(len(tokens)))
+        ax.set_xticklabels(tokens, rotation=90, fontsize=7)
         ax.set_xlabel('Key Tokens', fontsize=10)
     
     plt.suptitle(
@@ -313,8 +314,13 @@ def main(args):
         actual_length = attention_mask[0].sum().item()
         tokens = tokens[:actual_length]
         
-        print(f"Text: {metadata['text'][0]}")
-        print(f"True label: {label_names[labels[0].item()]}")
+        # Extract text from metadata
+        # metadata is a list of dicts, so get first item
+        text = metadata[0]['text'] if isinstance(metadata, list) else metadata['text']
+        true_label = label_names[labels[0].item()]
+        
+        print(f"Text: {text}")
+        print(f"True label: {true_label}")
         print(f"Sequence length: {actual_length}")
         print()
     
