@@ -5,7 +5,7 @@ Complete production-ready system for Nepali text classification using state-of-t
 
 ## Features
 
-- **9 Transformer Models**: BERT, BART, ELECTRA, Reformer, mBART, Canine, NepBERT, T5, Qwen2
+- **Vision Models**: DINOv2 and SWIN Transformers
 - **Nepali-Specific**: Optimized for low-resource Nepali language
 - **Dataset**: np20ng (Nepali 20 Newsgroups) from Hugging Face
 - **WandB Integration**: Real-time training monitoring
@@ -31,81 +31,44 @@ bash scripts/download_data.sh
 
 ## Quick Start
 
-### Train NepBERT (Recommended for Nepali)
+### Train DINOv2 (Recommended)
 ```bash
-bash scripts/train.sh nepbert
+bash scripts/train.sh dinov2
 ```
 
-### Train Other Models
+### Train SWIN
 ```bash
-bash scripts/train.sh bert
-bash scripts/train.sh t5
-bash scripts/train.sh qwen2
+bash scripts/train.sh swin
 ```
 
 ### Run Inference
 
 Batch:
 ```bash
-bash scripts/inference.sh nepbert ./experiments/checkpoints/nepbert_best.pth batch
+bash scripts/inference.sh dinov2 ./experiments/checkpoints/dinov2_best.pth batch
 ```
 
 Single Text:
 ```bash
-bash scripts/inference.sh nepbert ./checkpoints/nepbert_best.pth single "यो नेपाली वाक्य हो"
+bash scripts/inference.sh dinov2 ./checkpoints/dinov2_best.pth single "यो नेपाली वाक्य हो"
 ```
 
 ### Evaluate Metrics
 ```bash
-bash scripts/metrics.sh nepbert ./experiments/checkpoints/nepbert_best.pth
+bash scripts/metrics.sh dinov2 ./experiments/checkpoints/dinov2_best.pth
 ```
 
 ## Models
 
-### 1. BERT (Multilingual)
-- Baseline multilingual model
-- Good for Nepali text
-- ~177M parameters
-
-### 2. NepBERT (Recommended)
-- Specifically trained on Nepali corpus
-- Best performance for Nepali
-- ~110M parameters
-
-### 3. mBART
-- Multilingual BART
-- Strong for sequence tasks
-- ~610M parameters
-
-### 4. T5 (mT5)
-- Text-to-text framework
-- Versatile architecture
-- ~580M parameters
-
-### 5. Qwen2
-- Latest multilingual LLM
+### 1. DINOv2 (Recommended)
+- Self-supervised vision transformer
 - State-of-the-art performance
-- ~500M parameters
+- Best for image classification tasks
 
-### 6. ELECTRA
-- Efficient pre-training
-- Fast inference
-- ~110M parameters
-
-### 7. Canine
-- Character-level model
-- No tokenization needed
-- ~125M parameters
-
-### 8. Reformer
-- Efficient for long sequences
-- Lower memory
-- ~150M parameters
-
-### 9. BART
-- Denoising autoencoder
-- Strong representations
-- ~400M parameters
+### 2. SWIN
+- Shifted window attention mechanism
+- Efficient hierarchical architecture
+- Strong representation learning
 
 ## Dataset: np20ng
 
@@ -136,21 +99,25 @@ python tests/test_dataloader.py
 
 ## Results
 
-Expected performance on np20ng test set:
+Performance comparison on np20ng dataset:
 
-| Model | Accuracy | F1 (macro) | Parameters |
-|-------|----------|------------|------------|
-| NepBERT | ~85% | ~0.84 | 110M |
-| BERT | ~82% | ~0.81 | 177M |
-| mBART | ~84% | ~0.83 | 610M |
-| T5 | ~83% | ~0.82 | 580M |
+| Metric | DINOv2 | SWIN |
+|--------|--------|------|
+| Accuracy | 0.9644 | 0.9721 |
+| Precision (Macro) | 0.99509 | 0.97893 |
+| Recall (Macro) | 0.9812 | 0.9786 |
+| F1 Score (Macro) | 0.9812 | 0.97862 |
+| Matthews Correlation Coefficient | 0.97912 | 0.97625 |
+| Cohen's Kappa | 0.97911 | 0.97622 |
+| ROC-AUC (Macro) | 0.99936 | 0.99892 |
 
 ## Tips
 
-1. **Start with NepBERT** - Best for Nepali
-2. **Adjust batch size** based on GPU memory
-3. **Use mixed precision** for faster training
-4. **Monitor WandB** for real-time metrics
+1. **Start with DINOv2** - Best overall performance
+2. **Try SWIN** - Efficient alternative with strong results
+3. **Adjust batch size** based on GPU memory
+4. **Use mixed precision** for faster training
+5. **Monitor WandB** for real-time metrics
 
 ## Citation
 
